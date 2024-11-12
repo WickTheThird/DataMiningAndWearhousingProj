@@ -1,0 +1,6 @@
+django
+Pillow
+djangorestframework
+whitenoise
+pandas
+numpy
