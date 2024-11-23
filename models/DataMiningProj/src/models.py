@@ -35,7 +35,6 @@ class PoliticalRegieme(models.Model):
         return f"{str(self.year)} - {str(self.entity)} - {str(self.political_regime)}"
 
 
-#! We also have a religious wide but for now it serves our purpose
 class ReligiousLarge(models.Model):
     year = models.ForeignKey(Years, on_delete=models.CASCADE, null=True, blank=True)
     entity = models.CharField(max_length=100, blank=True, null=True)

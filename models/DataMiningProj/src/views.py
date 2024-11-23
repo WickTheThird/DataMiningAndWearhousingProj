@@ -11,6 +11,7 @@ import base64
 
 matplotlib.use('Agg')
 
+# TITLE :: CSV READING AND DB BULKING
 def read_csv_file(filename, nrows):
     csv_dir = os.path.join(settings.BASE_DIR, 'src/csv')
     file_path = os.path.join(csv_dir, filename)
@@ -333,6 +334,9 @@ def plot_religious_groups_estimate_areas(country_name: str):
 
     return image_data, filepath
 
+
+
+#TITLE :: RUNNERS
 #! Read CSV files
 # religious_large = read_csv_file('religious_large.csv', nrows=47069)
 # population_and_demography = read_csv_file('population_and_demography.csv', nrows=18723)
@@ -360,19 +364,26 @@ def plot_religious_groups_estimate_areas(country_name: str):
 # plot_political_regime("Croatia")
 # plot_political_regime("Romania")
 # plot_political_regime("Spain")
+# plot_political_regime("France")
+# plot_political_regime("United Kingdom")
 
 #! Plotting Population
 # plot_country_population("Croatia")
 # plot_country_population("Romania")
 # plot_country_population("Spain")
+# plot_country_population("France")
+# plot_country_population("United Kingdom")
 
 #! Plotting religious groups
 # plot_religious_groups_estimate("Croatia")
 # plot_religious_groups_estimate("Romania")
 # plot_religious_groups_estimate("Spain")
+# plot_religious_groups_estimate("France")
+# plot_religious_groups_estimate("United Kingdom")
 
 #! Area graph
 # plot_religious_groups_estimate_areas("France")
 # plot_religious_groups_estimate_areas("Croatia")
 # plot_religious_groups_estimate_areas("Romania")
 # plot_religious_groups_estimate_areas("Spain")
+# plot_religious_groups_estimate_areas("United Kingdom")
