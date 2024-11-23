@@ -344,7 +344,6 @@ def plot_religious_groups_estimate_areas(country_name: str):
 #TITLE :: Language Training
 
 def train_crude_birth_rate_model():
-    # Extract data from models
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
     political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
@@ -355,7 +354,6 @@ def train_crude_birth_rate_model():
     political_df = pd.DataFrame(political_data)
     birth_rate_df = pd.DataFrame(birth_rate_data)
 
-    # Filter for specific countries
     countries = ['United Kingdom', 'France', 'Spain']
     population_df = population_df[population_df['entity'].isin(countries)]
     religious_df = religious_df[religious_df['entity'].isin(countries)]
