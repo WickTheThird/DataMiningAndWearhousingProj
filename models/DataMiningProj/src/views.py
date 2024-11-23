@@ -1,10 +1,15 @@
 import pandas as pd
 import numpy as np
 from django.conf import settings
-from django.shortcuts import render
 from . import models
 from django.db import transaction
 import os
+import matplotlib
+import matplotlib.pyplot as plt
+import io
+import base64
+
+matplotlib.use('Agg')
 
 def read_csv_file(filename, nrows):
     csv_dir = os.path.join(settings.BASE_DIR, 'src/csv')
@@ -87,21 +92,287 @@ def bulk_insert_religious_large(df):
     ])
     return models.ReligiousLarge.objects.all()
 
-# Read CSV files
-religious_large = read_csv_file('religious_large.csv', nrows=47069)
-population_and_demography = read_csv_file('population_and_demography.csv', nrows=18723)
-crude_birth_rate = read_csv_file('crude_birth_rate_old.csv', nrows=18723)
-political_regime = read_csv_file('political_regime.csv', nrows=31139)
+@transaction.atomic
+def bulk_population(df):
+    
+    models.Population.objects.bulk_create([
+        models.Population(
+            year=models.Years.objects.get(year=row.Year),
+            population=row._4,
+            entity=row.Entity
+            ) for row in df.itertuples() if row.Year >= 1950
+    ])
+    
+    return models.Population.objects.all()
 
-# Insert data in bulk
+#TITLE :: PLOTS
+
+def plot_political_regime(country_name: str):
+    data = models.PoliticalRegieme.objects.filter(entity=country_name).order_by('year')
+
+    if not data:
+        print(f"No data found for {country_name}")
+        return None
+
+
+    filtered_data = [entry for entry in data if entry.year.year >= 1950]
+    years = np.array([entry.year.year for entry in filtered_data])
+    regimes = np.array([entry.political_regime for entry in filtered_data])
+
+    
+    print(years)
+    
+    regeime_code = {
+        0: 'Closed Autocracy',
+        1: 'Electoral Autocracy',
+        2: 'Electoral Democracy',
+        3: 'Liberal Democracy',
+    }
+
+    regime_colors = {
+        0: 'red',
+        1: 'orange',
+        2: 'blue',
+        3: 'green',
+    }
+
+    colors = np.array([regime_colors[regime] for regime in regimes])
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(years, regimes, c=colors, s=100, edgecolors='k', alpha=0.7)
+
+    ax.set_title(f"Political Regimes in {country_name} Over Time")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Political Regime")
+
+    for regime_score, color in regime_colors.items():
+        ax.scatter([], [], color=color, label=f"{regime_score}: {regeime_code[regime_score]}")
+    
+    ax.legend()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    output_dir = os.path.join(settings.MEDIA_ROOT, 'political_regime_plots')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{country_name}_regime_plot.png"
+    filepath = os.path.join(output_dir, filename)
+    fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    plt.close(fig)
+
+    return image_data, filepath
+
+def plot_country_population(country_name: str):
+    data = models.Population.objects.filter(entity=country_name).order_by('year')
+    
+    if not data:
+        print(f"No data found for {country_name}")
+        return None
+
+    filtered_data = [entry for entry in data if entry.year.year >= 1950]
+
+    years = np.array([entry.year.year for entry in filtered_data])
+    populations = np.array([entry.population for entry in filtered_data])
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(years, populations, marker='o', linestyle='-', color='b', label='Population')
+
+    ax.set_title(f"Population Over Time in {country_name}", fontsize=14)
+    ax.set_xlabel("Year", fontsize=12)
+    ax.set_ylabel("Population", fontsize=12)
+    ax.grid(True)
+    ax.legend()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    output_dir = os.path.join(settings.MEDIA_ROOT, 'population_plots')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{country_name}_population_plot.png"
+    filepath = os.path.join(output_dir, filename)
+    fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    plt.close(fig)
+
+    return image_data, filepath
+    
+
+def plot_religious_groups_estimate(country_name: str):
+    if country_name == 'Romania':
+        models.ReligiousLarge.objects.filter(entity="Rumania").update(entity="Romania")
+    
+    religious_data = models.ReligiousLarge.objects.filter(entity=country_name).order_by('year')
+    population_data = models.Population.objects.filter(entity=country_name).order_by('year')
+
+    if not religious_data or not population_data:
+        print(f"No data found for {country_name}")
+        return None
+
+    filtered_religious_data = [entry for entry in religious_data if entry.year.year >= 1950]
+    population_by_year = {entry.year.year: entry.population for entry in population_data if entry.year.year >= 1950}
+
+    grouped_data = {}
+    for entry in filtered_religious_data:
+        year = entry.year.year
+        group_name = entry.group_name
+        group_estimate = entry.group_estimate
+
+        if year not in grouped_data:
+            grouped_data[year] = {}
+        grouped_data[year][group_name] = group_estimate
+
+    years = sorted(grouped_data.keys())
+    group_names = set(name for year in grouped_data for name in grouped_data[year])
+
+    group_populations = {group: [] for group in group_names}
+
+    for year in years:
+        total_population = population_by_year.get(year, 0)
+        for group in group_names:
+            estimate = grouped_data[year].get(group, 0)
+            group_populations[group].append(total_population * (estimate / 100) if total_population else 0)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    for group, populations in group_populations.items():
+        ax.plot(years, populations, label=group)
+
+    ax.set_title(f"Religious Group Populations in {country_name} Over Time")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Population")
+    ax.legend()
+    ax.grid(True)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    output_dir = os.path.join(settings.MEDIA_ROOT, 'religious_group_plots')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{country_name}_religious_groups_plot.png"
+    filepath = os.path.join(output_dir, filename)
+    fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    plt.close(fig)
+
+    return image_data, filepath
+
+def plot_religious_groups_estimate_areas(country_name: str):
+    if country_name == 'Romania':
+        models.ReligiousLarge.objects.filter(entity="Rumania").update(entity="Romania")
+    
+    religious_data = models.ReligiousLarge.objects.filter(entity=country_name).order_by('year')
+    population_data = models.Population.objects.filter(entity=country_name).order_by('year')
+
+    if not religious_data or not population_data:
+        print(f"No data found for {country_name}")
+        return None
+
+    filtered_religious_data = [entry for entry in religious_data if entry.year.year >= 1950]
+    population_by_year = {entry.year.year: entry.population for entry in population_data if entry.year.year >= 1950}
+
+    grouped_data = {}
+    for entry in filtered_religious_data:
+        year = entry.year.year
+        group_name = entry.group_name
+        group_estimate = entry.group_estimate
+
+        if year not in grouped_data:
+            grouped_data[year] = {}
+        grouped_data[year][group_name] = group_estimate
+
+    years = sorted(grouped_data.keys())
+    group_names = set(name for year in grouped_data for name in grouped_data[year])
+
+    group_populations = {group: [] for group in group_names}
+
+    for year in years:
+        total_population = population_by_year.get(year, 0)
+        for group in group_names:
+            estimate = grouped_data[year].get(group, 0)
+            group_populations[group].append(total_population * (estimate / 100) if total_population else 0)
+
+    population_lists = [group_populations[group] for group in group_names]
+    group_names = list(group_names)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.stackplot(years, population_lists, labels=group_names, alpha=0.8)
+
+    ax.set_title(f"Religious Group Populations in {country_name} Over Time")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Population")
+    ax.legend(loc='upper left', fontsize='small')
+    ax.grid(True)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    output_dir = os.path.join(settings.MEDIA_ROOT, 'religious_group_plots_area')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{country_name}_religious_groups_plot.png"
+    filepath = os.path.join(output_dir, filename)
+    fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    plt.close(fig)
+
+    return image_data, filepath
+
+#! Read CSV files
+# religious_large = read_csv_file('religious_large.csv', nrows=47069)
+# population_and_demography = read_csv_file('population_and_demography.csv', nrows=18723)
+# crude_birth_rate = read_csv_file('crude_birth_rate_old.csv', nrows=18723)
+# political_regime = read_csv_file('political_regime.csv', nrows=31139)
+# population = read_csv_file('population.csv', nrows=59178)
+
+#! Insert data in bulk
 # years = bulk_insert_years(political_regime)
 # crude_birth_rates = bulk_insert_crude_birth_rates(crude_birth_rate)
 # population_and_demograpies = bulk_insert_population_and_demography(population_and_demography)
 # political_regimes = bulk_insert_political_regimes(political_regime)
 # religious_larges = bulk_insert_religious_large(religious_large)
+# populations = bulk_population(population)
 
+#! Checking conversion
 # print(f"Inserted {len(years)} Years")
 # print(f"Inserted {len(crude_birth_rates)} Crude Birth Rates")
 # print(f"Inserted {len(population_and_demograpies)} Population and Demography")
 # print(f"Inserted {len(political_regimes)} Political Regimes")
 # print(f"Inserted {len(religious_larges)} Religious Large entries")
+# print(f"Inserted {len(populations)} Populations")
+
+#! Plotting Political regieme
+# plot_political_regime("Croatia")
+# plot_political_regime("Romania")
+# plot_political_regime("Spain")
+
+#! Plotting Population
+# plot_country_population("Croatia")
+# plot_country_population("Romania")
+# plot_country_population("Spain")
+
+#! Plotting religious groups
+# plot_religious_groups_estimate("Croatia")
+# plot_religious_groups_estimate("Romania")
+# plot_religious_groups_estimate("Spain")
+
+#! Area graph
+# plot_religious_groups_estimate_areas("France")
+# plot_religious_groups_estimate_areas("Croatia")
+# plot_religious_groups_estimate_areas("Romania")
+# plot_religious_groups_estimate_areas("Spain")

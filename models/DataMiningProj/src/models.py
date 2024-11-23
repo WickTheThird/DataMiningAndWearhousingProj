@@ -48,3 +48,9 @@ class ReligiousLarge(models.Model):
 
     def __str__(self) -> str:
         return f"{str(self.year)} - {str(self.entity)} - {str(self.group_name)} - {str(self.group_proportion)}"
+
+
+class Population(models.Model):
+    year = models.ForeignKey(Years, on_delete=models.CASCADE, null=True, blank=True)
+    population = models.IntegerField(null=True, blank=True)
+    entity = models.CharField(max_length=100, blank=True, null=True)

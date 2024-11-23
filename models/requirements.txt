@@ -4,3 +4,4 @@ djangorestframework
 whitenoise
 pandas
 numpy
+matplotlib
