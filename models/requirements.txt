@@ -5,3 +5,4 @@ whitenoise
 pandas
 numpy
 matplotlib
+scikit-learn

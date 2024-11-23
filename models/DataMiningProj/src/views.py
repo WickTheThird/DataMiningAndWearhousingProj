@@ -8,6 +8,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import io
 import base64
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error, r2_score
 
 matplotlib.use('Agg')
 
@@ -334,6 +338,52 @@ def plot_religious_groups_estimate_areas(country_name: str):
 
     return image_data, filepath
 
+#TITLE :: Language Training
+
+def train_crude_birth_rate_model():
+    # Extract data from models
+    population_data = models.Population.objects.all().values('year', 'entity', 'population')
+    religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
+    political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
+    birth_rate_data = models.CrudeBirthRate.objects.all().values('year', 'entity', 'birth_rate')
+
+    population_df = pd.DataFrame(population_data)
+    religious_df = pd.DataFrame(religious_data)
+    political_df = pd.DataFrame(political_data)
+    birth_rate_df = pd.DataFrame(birth_rate_data)
+
+    merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
+
+    merged_df = merged_df.dropna()
+
+    X = merged_df[['population', 'group_proportion', 'political_regime', 'independent_country']]
+    y = merged_df['birth_rate']
+
+    # X = pd.get_dummies(X, columns=['political_regime'], drop_first=True)
+
+    # Standardize the features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    # coefficients
+    print(f"Intercept (B0): {model.intercept_}")
+    print(f"Coefficients (B1, B2, B3, B4): {model.coef_}")
+
+    y_pred = model.predict(X_test)
+
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    print(f"Mean Squared Error: {mse}")
+    print(f"R^2 Score: {r2}")
+
+    return model, scaler
 
 
 #TITLE :: RUNNERS
@@ -387,3 +437,6 @@ def plot_religious_groups_estimate_areas(country_name: str):
 # plot_religious_groups_estimate_areas("Romania")
 # plot_religious_groups_estimate_areas("Spain")
 # plot_religious_groups_estimate_areas("United Kingdom")
+
+#! Training Model
+model, scaler = train_crude_birth_rate_model()
