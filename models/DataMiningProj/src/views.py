@@ -12,6 +12,9 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error
+from sklearn.linear_model import Ridge, Lasso
+from sklearn.ensemble import RandomForestRegressor
 
 matplotlib.use('Agg')
 
@@ -352,6 +355,13 @@ def train_crude_birth_rate_model():
     political_df = pd.DataFrame(political_data)
     birth_rate_df = pd.DataFrame(birth_rate_data)
 
+    # Filter for specific countries
+    countries = ['United Kingdom', 'France', 'Spain']
+    population_df = population_df[population_df['entity'].isin(countries)]
+    religious_df = religious_df[religious_df['entity'].isin(countries)]
+    political_df = political_df[political_df['entity'].isin(countries)]
+    birth_rate_df = birth_rate_df[birth_rate_df['entity'].isin(countries)]
+
     merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
     merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
     merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
@@ -361,27 +371,25 @@ def train_crude_birth_rate_model():
     X = merged_df[['population', 'group_proportion', 'political_regime', 'independent_country']]
     y = merged_df['birth_rate']
 
-    # X = pd.get_dummies(X, columns=['political_regime'], drop_first=True)
-
-    # Standardize the features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
-    model = LinearRegression()
+    model = Ridge(alpha=1.0)  # Try other models here like RandomForestRegressor, etc.
     model.fit(X_train, y_train)
-
-    # coefficients
-    print(f"Intercept (B0): {model.intercept_}")
-    print(f"Coefficients (B1, B2, B3, B4): {model.coef_}")
 
     y_pred = model.predict(X_test)
 
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+
+    print(f"Intercept (B0): {model.intercept_}")
+    print(f"Coefficients (B1, B2, B3, B4): {model.coef_}")
     print(f"Mean Squared Error: {mse}")
     print(f"R^2 Score: {r2}")
+    print(f"Mean Absolute Error: {mae}")
 
     return model, scaler
 
