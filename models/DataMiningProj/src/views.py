@@ -8,13 +8,11 @@ import matplotlib
 import matplotlib.pyplot as plt
 import io
 import base64
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.metrics import mean_absolute_error
-from sklearn.linear_model import Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
 
 matplotlib.use('Agg')
 
@@ -391,6 +389,68 @@ def train_crude_birth_rate_model():
 
     return model, scaler
 
+def train_crude_birth_rate_random_forest_model():
+    # Extract data from models
+    population_data = models.Population.objects.all().values('year', 'entity', 'population')
+    religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
+    political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
+    birth_rate_data = models.CrudeBirthRate.objects.all().values('year', 'entity', 'birth_rate')
+
+    population_df = pd.DataFrame(population_data)
+    religious_df = pd.DataFrame(religious_data)
+    political_df = pd.DataFrame(political_data)
+    birth_rate_df = pd.DataFrame(birth_rate_data)
+
+    countries = ['United Kingdom', 'France', 'Spain']
+    population_df = population_df[population_df['entity'].isin(countries)]
+    religious_df = religious_df[religious_df['entity'].isin(countries)]
+    political_df = political_df[political_df['entity'].isin(countries)]
+    birth_rate_df = birth_rate_df[birth_rate_df['entity'].isin(countries)]
+
+    merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
+
+    merged_df = merged_df.dropna()
+
+    X = merged_df[['population', 'group_proportion', 'political_regime', 'independent_country']]
+    y = merged_df['birth_rate']
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+    model = RandomForestRegressor(random_state=42)
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+
+    print(f"Mean Squared Error: {mse}")
+    print(f"R^2 Score: {r2}")
+    print(f"Mean Absolute Error: {mae}")
+
+    scores = cross_val_score(model, X_scaled, y, cv=5)
+    print(f"Cross-validated R^2: {scores.mean()}")
+
+    # param_grid = {
+    #     'n_estimators': [100, 200],
+    #     'max_depth': [None, 10],
+    #     'min_samples_split': [2, 5],
+    #     'min_samples_leaf': [1, 2]
+    # }
+
+    # grid_search = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=5, scoring='neg_mean_squared_error')
+    # grid_search.fit(X_train, y_train)
+    # print(f"Best Hyperparameters: {grid_search.best_params_}")
+
+    # best_model = grid_search.best_estimator_
+
+    return model, scaler
 
 #TITLE :: RUNNERS
 #! Read CSV files
@@ -445,4 +505,5 @@ def train_crude_birth_rate_model():
 # plot_religious_groups_estimate_areas("United Kingdom")
 
 #! Training Model
-model, scaler = train_crude_birth_rate_model()
+# model, scaler = train_crude_birth_rate_model()
+model, scaler = train_crude_birth_rate_random_forest_model()
