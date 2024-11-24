@@ -275,84 +275,45 @@ def plot_religious_groups_estimate(country_name: str):
 
     return image_data, filepath
 
-def plot_religious_groups_estimate_areas(country_name: str):
-    if country_name == 'Romania':
-        models.ReligiousLarge.objects.filter(entity="Rumania").update(entity="Romania")
-    
-    religious_data = models.ReligiousLarge.objects.filter(entity=country_name).order_by('year')
-    population_data = models.Population.objects.filter(entity=country_name).order_by('year')
 
-    if not religious_data or not population_data:
-        print(f"No data found for {country_name}")
-        return None
+def plot_predictions_against_test(country_name, algorithm, years, actual, predicted):
+    # Flatten years, actual, and predicted if they are DataFrames or 2D arrays
+    years = years.values.flatten()
+    actual = np.array(actual).flatten()
+    predicted = np.array(predicted).flatten()
 
-    filtered_religious_data = [entry for entry in religious_data if entry.year.year >= 1950]
-    population_by_year = {entry.year.year: entry.population for entry in population_data if entry.year.year >= 1950}
+    # Create DataFrame with 'year', 'actual', and 'predicted'
+    data = pd.DataFrame({
+        'year': years,
+        'actual': actual,
+        'predicted': predicted
+    }).drop_duplicates(subset='year')
 
-    grouped_data = {}
-    for entry in filtered_religious_data:
-        year = entry.year.year
-        group_name = entry.group_name
-        group_estimate = entry.group_estimate
+    data = data.sort_values('year')
 
-        if year not in grouped_data:
-            grouped_data[year] = {}
-        grouped_data[year][group_name] = group_estimate
-
-    years = sorted(grouped_data.keys())
-    group_names = set(name for year in grouped_data for name in grouped_data[year])
-
-    group_populations = {group: [] for group in group_names}
-
-    for year in years:
-        total_population = population_by_year.get(year, 0)
-        for group in group_names:
-            estimate = grouped_data[year].get(group, 0)
-            group_populations[group].append(total_population * (estimate / 100) if total_population else 0)
-
-    population_lists = [group_populations[group] for group in group_names]
-    group_names = list(group_names)
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.stackplot(years, population_lists, labels=group_names, alpha=0.8)
-
-    ax.set_title(f"Religious Group Populations in {country_name} Over Time")
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Population")
-    ax.legend(loc='upper left', fontsize='small')
-    ax.grid(True)
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png')
-    buf.seek(0)
-    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
-
-    output_dir = os.path.join(settings.MEDIA_ROOT, 'religious_group_plots_area')
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    filename = f"{country_name}_religious_groups_plot.png"
-    filepath = os.path.join(output_dir, filename)
-    fig.savefig(filepath, dpi=300, bbox_inches='tight')
-
-    plt.close(fig)
-
-    return image_data, filepath
-
-def plot_predictions_against_test(country_name, algorithm, year, X_br, y_br):
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(year, X_br, c="#ff0000", s=100, edgecolors='k', alpha=0.7)
-    ax.scatter(year, y_br, c="#00ff00", s=100, edgecolors='k', alpha=0.7)
 
-    ax.set_title(f"Compared and Expected birthrates for { country_name } Over Time using { algorithm } algorithm")
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Birth Rate")
+    # Plot actual birth rates
+    ax.scatter(data['year'], data['actual'], color="#00ff00", s=100, edgecolors='k', alpha=0.7, label='Actual Birth Rate')
+
+    # Plot predicted birth rates
+    ax.scatter(data['year'], data['predicted'], color="#ff0000", s=100, edgecolors='k', alpha=0.7, label='Predicted Birth Rate')
+
+    # Line plot to connect the points for clarity
+    ax.plot(data['year'], data['actual'], color="#00ff00", linewidth=2, linestyle="--", alpha=0.8)
+    ax.plot(data['year'], data['predicted'], color="#ff0000", linewidth=2, linestyle="--", alpha=0.8)
+
+    ax.set_title(f"Actual vs Predicted Birth Rates for {country_name} ({algorithm})", fontsize=14)
+    ax.set_xlabel("Year", fontsize=12)
+    ax.set_ylabel("Births per 1000", fontsize=12)
+    ax.legend(fontsize=10)
+    ax.grid(alpha=0.3)
 
     buf = io.BytesIO()
-    fig.savefig(buf, format='png')
+    fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
     buf.seek(0)
     image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
-
+    
     output_dir = os.path.join(settings.MEDIA_ROOT, 'prediction_plots')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -363,9 +324,12 @@ def plot_predictions_against_test(country_name, algorithm, year, X_br, y_br):
 
     plt.close(fig)
 
+    return filepath, image_data
+
+
 #TITLE :: Language Training
 
-def train_crude_birth_rate_model():
+def train_crude_birth_rate_ridge_model():
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
     political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
@@ -424,7 +388,7 @@ def train_crude_birth_rate_random_forest_model():
     political_df = pd.DataFrame(political_data)
     birth_rate_df = pd.DataFrame(birth_rate_data)
 
-    countries = ['United Kingdom', 'France', 'Spain', 'Romania', 'Italy', 'Croatia']
+    countries = ['United Kingdom', 'France', 'Spain', 'Romania', 'Italy']
     
     population_df = population_df[population_df['entity'].isin(countries)]
     religious_df = religious_df[religious_df['entity'].isin(countries)]
@@ -492,7 +456,6 @@ def train_crude_birth_rate_linear_regression_model():
     model = LinearRegression()
     model.fit(X_train, y_train)
 
-
     print(f"Intercept (B0): {model.intercept_}")
     print(f"Coefficients (B1, B2, B3, B4): {model.coef_}")
 
@@ -505,8 +468,9 @@ def train_crude_birth_rate_linear_regression_model():
 
     return model, scaler
 
-def tester(model, scaler):
-    countries = ['Serbia', 'Croatia']
+def tester(model, scaler, country: str):
+    countries = []
+    countries.append(country)
     
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
@@ -527,7 +491,6 @@ def tester(model, scaler):
     merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
     merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
 
-    # Filtering for Serbia and Croatia from 1991 onwards
     merged_df = merged_df[
         ~((merged_df['entity'].isin(['Serbia', 'Croatia'])) & (merged_df['year'] < 1991))
     ]
@@ -555,31 +518,25 @@ def tester(model, scaler):
 #TITLE :: DATASET
 
 def create_complete_dataset():
-    # Fetch all data without filtering by country
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
     political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
     birth_rate_data = models.CrudeBirthRate.objects.all().values('year', 'entity', 'birth_rate')
 
-    # Convert to DataFrames
     population_df = pd.DataFrame(population_data)
     religious_df = pd.DataFrame(religious_data)
     political_df = pd.DataFrame(political_data)
     birth_rate_df = pd.DataFrame(birth_rate_data)
 
-    # Merge all data
     merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
     merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
     merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
 
-    # Drop any rows with missing values (optional, depending on the context)
     merged_df = merged_df.dropna()
 
-    # Create directory for saving the dataset
     output_dir = os.path.join(settings.BASE_DIR, 'dataset_csv')
     os.makedirs(output_dir, exist_ok=True)
 
-    # Save the merged dataset as a CSV
     output_path = os.path.join(output_dir, 'complete_dataset.csv')
     merged_df.to_csv(output_path, index=False)
 
@@ -641,18 +598,30 @@ def create_complete_dataset():
 
 #! Training Model
 # model, scaler = train_crude_birth_rate_linear_regression_model()
-# years, base, prediction = tester(model, scaler)
-# plot_predictions_against_test("Portugal", "Linear Regression", years, base, prediction)
+# model, scaler = train_crude_birth_rate_ridge_model()
 # model, scaler = train_crude_birth_rate_random_forest_model()
-# years, base, prediction = tester(model, scaler)
 
-# plot_predictions_against_test("Croatia", "Linear Regression", years, base, prediction)
+#! Plotting Testing Model
+# years, base, prediction = tester(model, scaler, "Lithuania")
+# plot_predictions_against_test("Lithuania", "Linear Regression", years, base, prediction)
+# plot_predictions_against_test("Lithuania", "Ridge Regression", years, base, prediction)
+# plot_predictions_against_test("Lithuania", "Random Forest", years, base, prediction)
+
+# years, base, prediction = tester(model, scaler, "Portugal")
+# plot_predictions_against_test("Portugal", "Linear Regression", years, base, prediction)
+# plot_predictions_against_test("Portugal", "Ridge Regression", years, base, prediction)
+# plot_predictions_against_test("Portugal", "Random Forest", years, base, prediction)
+
+# years, base, prediction = tester(model, scaler, "Serbia")
 # plot_predictions_against_test("Serbia", "Linear Regression", years, base, prediction)
+# plot_predictions_against_test("Serbia", "Ridge Regression", years, base, prediction)
+# plot_predictions_against_test("Serbia", "Random Forest", years, base, prediction)
+
+# years, base, prediction = tester(model, scaler, "Croatia")
+# plot_predictions_against_test("Croatia", "Linear Regression", years, base, prediction)
+# plot_predictions_against_test("Croatia", "Ridge Regression", years, base, prediction)
+# plot_predictions_against_test("Croatia", "Random Forest", years, base, prediction)
+
 
 #! Final Dataset
-complete_dataset = create_complete_dataset()
-
-#TODO:
-"""
-We should try and make the sections a bit smaller...since its a maximum of 10 pages
-"""
+# complete_dataset = create_complete_dataset()
