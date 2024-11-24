@@ -339,6 +339,30 @@ def plot_religious_groups_estimate_areas(country_name: str):
 
     return image_data, filepath
 
+def plot_predictions_against_test(country_name, algorithm, year, X_br, y_br):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(year, X_br, c="#ff0000", s=100, edgecolors='k', alpha=0.7)
+    ax.scatter(year, y_br, c="#00ff00", s=100, edgecolors='k', alpha=0.7)
+
+    ax.set_title(f"Compared and Expected birthrates for { country_name } Over Time using { algorithm } algorithm")
+    ax.set_xlabel("Year")
+    ax.set_ylabel("Birth Rate")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    image_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+    output_dir = os.path.join(settings.MEDIA_ROOT, 'prediction_plots')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    filename = f"{country_name.lower().replace(' ', '_')}_{algorithm.lower().replace(' ', '_')}_prediction_plot.png"
+    filepath = os.path.join(output_dir, filename)
+    fig.savefig(filepath, dpi=300, bbox_inches='tight')
+
+    plt.close(fig)
+
 #TITLE :: Language Training
 
 def train_crude_birth_rate_model():
@@ -482,7 +506,7 @@ def train_crude_birth_rate_linear_regression_model():
     return model, scaler
 
 def tester(model, scaler):
-    countries = ['Latvia']
+    countries = ['Portugal']
     
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
@@ -500,26 +524,32 @@ def tester(model, scaler):
     birth_rate_df = birth_rate_df[birth_rate_df['entity'].isin(countries)]
 
     merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
-    merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
-    merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df,     political_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df,     birth_rate_df, on=['year', 'entity'], how='left')
 
     merged_df = merged_df.dropna()
 
     X = merged_df[['population', 'group_proportion', 'political_regime', 'independent_country']]
     y = merged_df['birth_rate']
 
+    # print("\n\n\n")
+    # print(X)
+    # print("\n\n\n")
+
     X_scaled = scaler.transform(X)
 
-    y_pred = model.predict(X_scaled)
-
+    y_pred      = model.predict(X_scaled)
+    years = merged_df[['year']]
+    print(f"y_pred len: {len(y_pred)} {len(years)} {len(y)}")
     print(f"Predictions for: {y_pred}")
+
 
     mse = mean_squared_error(y, y_pred)
     r2 = r2_score(y, y_pred)
     print(f"Mean Squared Error: {mse}")
     print(f"R^2 Score: {r2}")
 
-    return y_pred
+    return (years, y, y_pred)
 
 
 #TITLE :: RUNNERS
@@ -571,12 +601,13 @@ def tester(model, scaler):
 # plot_religious_groups_estimate_areas("France")
 # plot_religious_groups_estimate_areas("Croatia")
 # plot_religious_groups_estimate_areas("Romania")
-# plot_religious_groups_estimate_areas("Spain")
+# plot_religious_groups_estimate_areas("Portugal")
 # plot_religious_groups_estimate_areas("United Kingdom")
 
 #! Training Model
 # model, scaler = train_crude_birth_rate_model()
+# years, base, prediction = tester(model, scaler)
+# plot_predictions_against_test("Portugal", "Linear Regression", years, base, prediction)
 # model, scaler = train_crude_birth_rate_random_forest_model()
-# tester(model, scaler)
-
-# Croatia, Ireland, Latvia, Germany
+# years, base, prediction = tester(model, scaler)
+# plot_predictions_against_test("Portugal", "Random Forest", years, base, prediction)
