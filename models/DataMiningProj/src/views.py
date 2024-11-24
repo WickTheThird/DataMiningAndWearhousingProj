@@ -506,7 +506,7 @@ def train_crude_birth_rate_linear_regression_model():
     return model, scaler
 
 def tester(model, scaler):
-    countries = ['Portugal']
+    countries = ['Serbia', 'Croatia']
     
     population_data = models.Population.objects.all().values('year', 'entity', 'population')
     religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
@@ -524,25 +524,26 @@ def tester(model, scaler):
     birth_rate_df = birth_rate_df[birth_rate_df['entity'].isin(countries)]
 
     merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
-    merged_df = pd.merge(merged_df,     political_df, on=['year', 'entity'], how='left')
-    merged_df = pd.merge(merged_df,     birth_rate_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
+
+    # Filtering for Serbia and Croatia from 1991 onwards
+    merged_df = merged_df[
+        ~((merged_df['entity'].isin(['Serbia', 'Croatia'])) & (merged_df['year'] < 1991))
+    ]
 
     merged_df = merged_df.dropna()
 
     X = merged_df[['population', 'group_proportion', 'political_regime', 'independent_country']]
     y = merged_df['birth_rate']
 
-    # print("\n\n\n")
-    # print(X)
-    # print("\n\n\n")
-
     X_scaled = scaler.transform(X)
+    y_pred = model.predict(X_scaled)
 
-    y_pred      = model.predict(X_scaled)
     years = merged_df[['year']]
+
     print(f"y_pred len: {len(y_pred)} {len(years)} {len(y)}")
     print(f"Predictions for: {y_pred}")
-
 
     mse = mean_squared_error(y, y_pred)
     r2 = r2_score(y, y_pred)
@@ -550,6 +551,40 @@ def tester(model, scaler):
     print(f"R^2 Score: {r2}")
 
     return (years, y, y_pred)
+
+#TITLE :: DATASET
+
+def create_complete_dataset():
+    # Fetch all data without filtering by country
+    population_data = models.Population.objects.all().values('year', 'entity', 'population')
+    religious_data = models.ReligiousLarge.objects.all().values('year', 'entity', 'group_name', 'group_proportion', 'independent_country')
+    political_data = models.PoliticalRegieme.objects.all().values('year', 'entity', 'political_regime')
+    birth_rate_data = models.CrudeBirthRate.objects.all().values('year', 'entity', 'birth_rate')
+
+    # Convert to DataFrames
+    population_df = pd.DataFrame(population_data)
+    religious_df = pd.DataFrame(religious_data)
+    political_df = pd.DataFrame(political_data)
+    birth_rate_df = pd.DataFrame(birth_rate_data)
+
+    # Merge all data
+    merged_df = pd.merge(population_df, religious_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, political_df, on=['year', 'entity'], how='left')
+    merged_df = pd.merge(merged_df, birth_rate_df, on=['year', 'entity'], how='left')
+
+    # Drop any rows with missing values (optional, depending on the context)
+    merged_df = merged_df.dropna()
+
+    # Create directory for saving the dataset
+    output_dir = os.path.join(settings.BASE_DIR, 'dataset_csv')
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Save the merged dataset as a CSV
+    output_path = os.path.join(output_dir, 'complete_dataset.csv')
+    merged_df.to_csv(output_path, index=False)
+
+    print(f"Dataset successfully saved at {output_path}")
+    return merged_df
 
 
 #TITLE :: RUNNERS
@@ -605,9 +640,19 @@ def tester(model, scaler):
 # plot_religious_groups_estimate_areas("United Kingdom")
 
 #! Training Model
-# model, scaler = train_crude_birth_rate_model()
+# model, scaler = train_crude_birth_rate_linear_regression_model()
 # years, base, prediction = tester(model, scaler)
 # plot_predictions_against_test("Portugal", "Linear Regression", years, base, prediction)
 # model, scaler = train_crude_birth_rate_random_forest_model()
 # years, base, prediction = tester(model, scaler)
-# plot_predictions_against_test("Portugal", "Random Forest", years, base, prediction)
+
+# plot_predictions_against_test("Croatia", "Linear Regression", years, base, prediction)
+# plot_predictions_against_test("Serbia", "Linear Regression", years, base, prediction)
+
+#! Final Dataset
+complete_dataset = create_complete_dataset()
+
+#TODO:
+"""
+We should try and make the sections a bit smaller...since its a maximum of 10 pages
+"""
